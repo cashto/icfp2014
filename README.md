@@ -40,15 +40,17 @@ To spread things out at the beginning, each ghost has a "scatter" mode 25% of th
 
 ### Remarks
 
-The lightning round AI was pretty bare-bones, owing to the fact that I didn't start working on it until about midnight, five hours before the deadline. Most of the first day was spent working on the simulator. In retrospect, I could probably could have skipped that altogether and just used the online implementation, but on the other hand, I had a fairly disasterous showing in 2011 in large part due to my reliance on the organizers' reference implementation, and as a result I had very little insight into how the VM worked, and not enough tools for debugging my AI's issues, besides the very terse error messages I would get back.
+The lightning round AI was pretty bare-bones (see a dot?  eat a dot.  don't see a dot?  move randomly).  This was owing to the fact that I didn't start working on it until about midnight, five hours before the deadline. Most of the first day was spent working on the simulator. In retrospect, I could probably could have skipped that altogether and just used the online implementation, but on the other hand, I had a fairly disasterous showing in 2011 in large part due to my reliance on the organizers' reference implementation, and as a result I had very little insight into how the VM worked, and not enough tools for debugging my AI's issues, besides the very terse error messages I would get back.
 
 I thought about writing a Lisp-like DSL -- I thought it might take too long, and writing AI assembly language by hand is fairly straightforward; but in the process I wrote dozens of little bugs where I would pop too many things off the stack, or not pass enough parameters to a function, and debugging each one one was tedious and took some time.  Using a DSL would have eliminated that.  I probably made the wrong tradeoff here.
 
 I never used the DUM / RAP / TRAP opcodes.  I'm still a little hazy on why I would ever want to use RAP rather than AP.  I did use TAP quite a bit -- I think the difference is that TAP still keeps building environment frames, and if the depth of my recursion ever got big, that might be a problem, but since infinite recursion was not needed in this contest, I don't think it was necessary. 
 
+I also never understood why GHC assembly has a JLT opcode (which is unnecessary; just use JGT with the operands reversed).  But no JNE?  Yeah, thanks a lot, guys.
+
 Midway through the 2nd day I discovered an ambiguity in the spec that I reported to the organizers -- rounding behavior of DIV was not defined.  In C#, division rounds to zero; in their reference implementation, it rounds to negative infinity.  Fortunately, the latter behavior makes it MUCH easier to write a MOD function that deals with negative arguments correctly ...
 
-I wrote a lot of code to try to prevent LambdaMan from eating powerpills unless ghosts were "on average" close by.  In the end I tossed it: the heuristic of just unconditionally penalizing powerpills worked much better.
+I wrote a lot of code to try to prevent LambdaMan from eating powerpills unless the average distance to the ghosts was beneath some cutoff.  In the end I tossed it: the heuristic of just unconditionally penalizing powerpills worked much better.
 
 With a standard map and four ghosts, each iteration of the LambdaMan step function takes between 100,000 and 1,000,000 cycles.  There was a upper bound of ~3,000,000 cycles per iteration, so I felt a search depth of 5 was relatively safe. 
 
