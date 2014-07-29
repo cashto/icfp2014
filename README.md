@@ -44,7 +44,7 @@ The lightning round AI was pretty bare-bones, owing to the fact that I didn't st
 
 I thought about writing a Lisp-like DSL -- I thought it might take too long, and writing AI assembly language by hand is fairly straightforward; but in the process I wrote dozens of little bugs where I would pop too many things off the stack, or not pass enough parameters to a function, and debugging each one one was tedious and took some time.  Using a DSL would have eliminated that.  I probably made the wrong tradeoff here.
 
-I never used the DUM / RAP / TRAP opcodes.  I'm still a little hazy on why I would ever want to use RAP rather than AP.  I did use TAP quite a bit -- I think the difference is that TAP still keeps building environment frames, and if the depth of my recursion ever got big, that would be a problem 
+I never used the DUM / RAP / TRAP opcodes.  I'm still a little hazy on why I would ever want to use RAP rather than AP.  I did use TAP quite a bit -- I think the difference is that TAP still keeps building environment frames, and if the depth of my recursion ever got big, that might be a problem, but since infinite recursion was not needed in this contest, I don't think it was necessary. 
 
 Midway through the 2nd day I discovered an ambiguity in the spec that I reported to the organizers -- rounding behavior of DIV was not defined.  In C#, division rounds to zero; in their reference implementation, it rounds to negative infinity.  Fortunately, the latter behavior makes it MUCH easier to write a MOD function that deals with negative arguments correctly ...
 
