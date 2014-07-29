@@ -1,0 +1,275 @@
+!func main world dummy
+    ldc 1
+    ldf [step]
+    cons
+    rtn
+    
+!func step state world
+    ldc -1
+    ldc -1
+    ld 0 [state]
+!locals dot_dir space_dir rand_seed 
+    ;ld 0 [rand_seed]
+    ;!call rand
+    ;st 0 [rand_seed]
+
+    ;ld 0 [rand_seed]
+    ;ldc 48
+    ;!call mod
+    ;ldc 4
+    ;cgte
+    ;tsel [regular_move] [random_move]
+    
+    regular_move:
+    ; push current pos on stack
+    ld 1 [world]
+    cdr
+    car
+    cdr
+    car
+    
+    ; check up
+    !call dup
+    ldc 0
+    ldc -1
+    ldc 0
+    !call step_sub
+
+    ; check right
+    !call dup
+    ldc 1
+    ldc 0
+    ldc 1
+    !call step_sub
+
+    ; check down
+    !call dup
+    ldc 0
+    ldc 1
+    ldc 2
+    !call step_sub
+    
+    ; check left
+    !call dup
+    ldc -1
+    ldc 0
+    ldc 3
+    !call step_sub
+    
+    !call pop
+    
+    ld 0 [dot_dir]
+    ldc -1
+    ceq
+    tsel [no_dot] [dot]
+    
+    dot:
+        ld 0 [rand_seed]
+        ld 0 [dot_dir]
+        cons
+        rtn
+    
+    no_dot:
+    ld 0 [space_dir]
+    ldc -1
+    ceq
+    tsel [no_space] [space]
+    
+    space:
+        ld 0 [rand_seed]
+        ld 0 [space_dir]
+        cons
+        rtn
+        
+    no_space:
+        ld 0 [rand_seed]
+        ld 1 [world]
+        !call get_opposite_dir
+        cons
+        rtn
+        
+    random_move:
+        ld 0 [rand_seed]
+        ld 0 [rand_seed]
+        ldc 4
+        !call mod
+        !call print
+        cons
+        rtn
+        
+!func step_sub pt dx dy dir
+    ld 2 [step$world] ; reach up into step and grab it
+    ld 0 [pt]
+    ld 0 [dx]
+    ld 0 [dy]
+    !call add_point
+    !call get_map
+    !call dup
+    !call is_food
+    tsel [if_food] [if_not_food]
+    
+    if_food:
+        !call pop
+        ld 0 [dir]
+        st 1 [step$dot_dir]
+        rtn
+        
+    if_not_food:
+        tsel [if_not_wall] [if_wall]
+        
+    if_not_wall:
+        ld 0 [dir]
+        ld 2 [step$world]
+        !call get_opposite_dir
+        ceq
+        tsel [if_wall] [if_not_wall_ok]
+        
+    if_not_wall_ok:
+        ld 0 [dir]
+        st 1 [step$space_dir]
+        
+    if_wall:
+        rtn
+
+!func add_point pt dx dy
+    ld 0 [pt]
+    car
+    ld 0 [dx]
+    add
+    
+    ld 0 [pt]
+    cdr
+    ld 0 [dy]
+    add
+    
+    cons
+    rtn
+
+!func is_food ch
+    ldc 0  ; default return false
+    ld 0 [ch]
+    ldc 2 ; pill
+    ceq 
+    tsel [ret_true] [is_not_pill] 
+    
+    is_not_pill:
+        ld 0 [ch]
+        ldc 3 ; power_pill
+        ceq 
+        tsel [ret_true] [is_not_power_pill]
+        
+    is_not_power_pill:
+        rtn
+        
+    ret_true:
+        ldc 1
+        add
+        rtn
+
+!func opposite_dir dir
+    ld 0 [dir]
+    ldc 4
+    !call inc_wrap
+    ldc 4
+    !call inc_wrap
+    rtn
+
+!func get_opposite_dir world
+    ld 0 [world]
+    cdr
+    car
+    cdr
+    cdr
+    car
+    !call opposite_dir
+    rtn
+    
+!func get_map world pt
+    ld 0 [world]
+    car
+    ld 0 [pt]
+    cdr
+    !call list_nth
+    ld 0 [pt]
+    car
+    !call list_nth
+    rtn
+
+!func print
+    !call dup
+    dbug
+    rtn
+    
+!func list_nth list n
+    ld 0 [n]
+    tsel [is_not_zero] [is_zero]
+    
+    is_zero:
+        ld 0 [list]
+        car
+        rtn
+    
+    is_not_zero:
+        ld 0 [list]
+        cdr
+        ld 0 [n]
+        ldc 1
+        sub
+        ldf [list_nth]
+        tap 2
+        
+!func dup val
+    ld 0 [val]
+    ld 0 [val]
+    rtn
+
+!func pop val
+    rtn
+
+!func inc_wrap i n
+    ld 0 [i]
+    ldc 1
+    add
+    !call dup
+    ld 0 [n]
+    ceq 
+    tsel [if_true] [if_false]
+    if_true:
+        !call pop
+        ldc 0
+    if_false:
+        rtn
+    
+!func rand seed
+    ld 0 [seed]
+    ldc 1664525
+    mul
+    ldc 1013904223
+    add
+    rtn
+
+!func abs n
+    ld 0 [n]
+    ldc 0
+    cgte
+    tsel [positive] [negative]
+    
+    negative:
+        ldc 0
+        ldc [n]
+        sub
+        rtn
+        
+    positive:
+        ld 0 [n]
+        rtn
+    
+!func mod i n
+    ld 0 [i]
+    ld 0 [i]
+    ld 0 [n]
+    div
+    ld 0 [n]
+    mul
+    sub
+    rtn

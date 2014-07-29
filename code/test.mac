@@ -1,0 +1,33 @@
+    ldc 1
+    loop:
+        !call dup
+        dbug
+        !call rand
+        ldc 0
+        tsel [loop] [loop]
+
+!func dup val
+    ld 0 [val]
+    ld 0 [val]
+    rtn
+    
+!func rand seed
+    ld 0 [seed]
+    ldc 1664525
+    mul
+    ldc 1013904223
+    add
+    
+    !call dup
+    ldc 0
+    cgte
+    tsel [positive] [negative]
+    
+    negative:
+        st 0 [seed]
+        ldc 0
+        ld 0 [seed]
+        sub
+        
+    positive:
+        rtn
