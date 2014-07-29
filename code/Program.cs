@@ -111,6 +111,36 @@ namespace Sim
                 position.y);
         }
 
+        public static void LogFright(int tick, bool frightMode)
+        {
+            Console.WriteLine("   {{ \"tick\":{0}, \"event\":\"fright\", \"data\":{1} }},",
+                tick,
+                frightMode ? "true" : "false");
+        }
+
+        public static void LogProfileInfo(
+            int tick,
+            Dictionary<string, int> profileData,
+            Dictionary<int, int> funcCallData)
+        {
+            foreach (var item in profileData.OrderBy(i => i.Value))
+            {
+                Console.WriteLine("   {{ \"tick\":{0}, \"event\":\"prof\", \"count\":{1}, \"data\":[{2}] }},",
+                    tick,
+                    item.Value,
+                    item.Key);
+            }
+
+            foreach (var item in funcCallData.OrderBy(i => i.Value))
+            {
+                Console.WriteLine("   {{ \"tick\":{0}, \"event\":\"func\", \"count\":{1}, \"data\":[{2}] }},",
+                    tick,
+                    item.Value,
+                    item.Key);
+            }
+        }
+
+
         public static T Pop<T>(this List<T> stack)
         {
             T ans = stack.Last();
@@ -139,11 +169,13 @@ namespace Sim
             string pacmanFilename,
             List<string> ghostFilenames)
         {
-            var file = new StreamReader(mapFilename);
             var fileLines = new List<string>();
-            while (!file.EndOfStream)
+            using (var file = new StreamReader(mapFilename))
             {
-                fileLines.Add(file.ReadLine());
+                while (!file.EndOfStream)
+                {
+                    fileLines.Add(file.ReadLine());
+                }
             }
 
             Console.WriteLine("   {{ \"tick\":0, \"event\":\"begin\", \"data\":[{0}] }},",
@@ -167,7 +199,6 @@ namespace Sim
                             this.Pacman = new Pacman(pacmanFilename);
                             this.Pacman.InitActor(this, point);
                             Program.LogMove(0, @"\\", point);
-                            cell = MapCell.Empty;
                             break;
                         case MapCell.Ghost:
                             var ghost = new Ghost(ghostFilenames[ghostIndex % ghostFilenames.Count], ghostIndex);
@@ -175,11 +206,9 @@ namespace Sim
                             Program.LogMove(0, string.Format("={0}", ghostIndex), point);
                             this.Ghosts.Add(ghost);
                             ++ghostIndex;
-                            cell = MapCell.Empty;
                             break;
                         case MapCell.Fruit:
                             this.fruitLocation = point;
-                            cell = MapCell.Empty;
                             break;
                         case MapCell.Pill:
                             ++this.pillsTotal;
@@ -192,9 +221,9 @@ namespace Sim
 
         public void Tick(int tick)
         {
-            if (tick == this.frightModeDeactivateTime)
+            if (tick == this.FrightModeDeactivateTime)
             {
-                Program.LogDebug(tick, "Fright deactivated");
+                Program.LogFright(tick, false);
                 foreach (var ghost in this.Ghosts)
                 {
                     ghost.Vitality = GhostVitality.Standard;
@@ -204,13 +233,12 @@ namespace Sim
             if (fruitShowTimes.Contains(tick))
             {
                 Program.LogPut(tick, "%", fruitLocation);
-                this[fruitLocation] = MapCell.Fruit;
+                this.FruitDeactivateTime = fruitHideTimes.Where(i => i > tick).First();
             }
 
-            if (fruitHideTimes.Contains(tick))
+            if (tick == this.FruitDeactivateTime)
             {
                 Program.LogPut(tick, " ", fruitLocation);
-                this[fruitLocation] = MapCell.Empty;
             }
 
             switch (this[this.Pacman.CurrentPosition])
@@ -220,28 +248,34 @@ namespace Sim
                     Program.LogDebug(tick, "{0} points", 10);
                     this.Points += 10;
                     ++this.pillsEaten;
+                    this[this.Pacman.CurrentPosition] = MapCell.Empty;
                     break;
                 case MapCell.PowerPill:
                     Program.LogPut(tick, " ", this.Pacman.CurrentPosition);
-                    Program.LogDebug(tick, "Fright activated");
+                    Program.LogFright(tick, true);
+                    Program.LogDebug(tick, "Pacman ate power pill");
                     Program.LogDebug(tick, "{0} points", 50);
                     this.Points += 50;
-                    this.frightModeDeactivateTime = tick + 127 * 20;
+                    this.FrightModeDeactivateTime = tick + 127 * 20;
                     this.ghostsEaten = 0;
                     foreach (var ghost in this.Ghosts)
                     {
                         ghost.Vitality = GhostVitality.Fright;
                         ghost.Direction = Program.OppositeDirection(ghost.Direction);
                     }
+                    this[this.Pacman.CurrentPosition] = MapCell.Empty;
                     break;
                 case MapCell.Fruit:
-                    Program.LogPut(tick, " ", this.Pacman.CurrentPosition);
-                    Program.LogDebug(tick, "Pacman ate fruit");
-                    Program.LogDebug(tick, "{0} points", FruitPoints());
-                    this.Points += FruitPoints();
+                    if (tick < this.FruitDeactivateTime)
+                    {
+                        Program.LogPut(tick, " ", this.Pacman.CurrentPosition);
+                        Program.LogDebug(tick, "Pacman ate fruit");
+                        Program.LogDebug(tick, "{0} points", FruitPoints());
+                        this.Points += FruitPoints();
+                        this.FruitDeactivateTime = tick;
+                    }
                     break;
             }
-            this[this.Pacman.CurrentPosition] = MapCell.Empty;
 
             foreach (var ghost in this.Ghosts)
             {
@@ -282,6 +316,8 @@ namespace Sim
         public Pacman Pacman { get; private set; }
         public List<Ghost> Ghosts { get; private set; }
         public int Points { get; set; }
+        public int FrightModeDeactivateTime { get; private set; }
+        public int FruitDeactivateTime { get; private set; }
 
         public MapCell this[int x, int y]
         {
@@ -297,7 +333,6 @@ namespace Sim
 
         private Point fruitLocation;
         private MapCell[,] data;
-        private int frightModeDeactivateTime;
         private int ghostsEaten;
         private int pillsEaten;
         private int pillsTotal;

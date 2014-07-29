@@ -1,0 +1,354 @@
+!func pop val
+    rtn
+
+    
+!func dup val
+    ld 0 [val]
+    ld 0 [val]
+    rtn
+
+
+!func print
+    !call dup
+    dbug
+    rtn
+
+    
+!func list_nth list n
+    ld 0 [n]
+    tsel [is_not_zero] [is_zero]
+    
+    is_zero:
+        ld 0 [list]
+        car
+        rtn
+    
+    is_not_zero:
+        ld 0 [list]
+        cdr
+        ld 0 [n]
+        ldc 1
+        sub
+        !tcall list_nth
+
+        
+; fn takes (i, context)
+!func list_map list fn context
+    ld 0 [list]
+    atom
+    tsel [is_atom] [is_not_atom]
+    
+    is_atom:
+        ldc 0
+        rtn
+    
+    is_not_atom:
+    ld 0 [list]
+    car
+    ld 0 [context]
+    ld 0 [fn]
+    ap 2
+    
+    ld 0 [list]
+    cdr
+    ld 0 [fn]
+    ld 0 [context]
+    !call list_map
+    cons
+    rtn
+    
+
+; fn takes (a, i, context)
+!func list_fold list a0 fn context
+    ld 0 [list]
+    atom
+    tsel [is_atom] [is_not_atom]
+    
+    is_atom:
+        ld 0 [a0]
+        rtn
+    
+    is_not_atom:
+        ld 0 [list]
+        cdr
+        
+        ld 0 [a0]
+        ld 0 [list]
+        car
+        ld 0 [context]
+        ld 0 [fn]
+        ap 3
+        
+        ld 0 [fn]
+        ld 0 [context]
+        !tcall list_fold
+
+        
+; fn takes (i, context)
+!func list_any list fn context
+    ld 0 [list]
+    atom
+    tsel [is_atom] [is_not_atom]
+    
+    is_atom:
+        ldc 0
+        rtn
+    
+    is_not_atom:
+        ld 0 [list]
+        car
+        ld 0 [context]
+        ld 0 [fn]
+        ap 2
+        tsel [is_match] [is_not_match]
+    
+    is_match:
+        ldc 1
+        rtn
+
+    is_not_match:
+        ld 0 [list]
+        cdr
+        ld 0 [fn]
+        ld 0 [context]
+        !tcall list_any
+
+        
+!func max a b
+    ld 0 [a]
+    ld 0 [b]
+    cgt
+    tsel [return_a] [return_b]
+    
+    return_a:
+        ld 0 [a]
+        rtn
+        
+    return_b:
+        ld 0 [b]
+        rtn
+
+
+!func min a b
+    ld 0 [a]
+    ld 0 [b]
+    cgt
+    ld 0 [b]
+    ld 0 [a]
+    !tcall ternary
+
+    
+!func ternary t a b
+    ld 0 [t]
+    tsel [return_a] [return_b]
+    return_a:
+        ld 0 [a]
+        rtn
+    return_b:
+        ld 0 [b]
+        rtn
+
+
+!func compare_pt pt1 pt2
+    ld 0 [pt1]
+    !get pt.x
+    ld 0 [pt2]
+    !get pt.x
+    ceq
+    
+    ld 0 [pt1]
+    !get pt.y
+    ld 0 [pt2]
+    !get pt.y
+    ceq
+
+    add
+    ldc 2
+    ceq
+    rtn
+    
+
+!func pt_distance pt1 pt2
+    ld 0 [pt1]
+    !get pt.x
+    ld 0 [pt2]
+    !get pt.x
+    sub
+    !call abs
+    
+    ld 0 [pt1]
+    !get pt.y
+    ld 0 [pt2]
+    !get pt.y
+    sub
+    !call abs
+    
+    add
+    rtn
+
+    
+!func rand seed
+    ld 0 [seed]
+    ldc 1664525
+    mul
+    ldc 1013904223
+    add
+    rtn
+
+    
+!func mod i n
+    ld 0 [i]
+    ld 0 [i]
+    ld 0 [n]
+    div
+    ld 0 [n]
+    mul
+    sub
+    rtn
+    
+
+!func abs n
+    ld 0 [n]
+    ldc 0
+    cgte
+    tsel [is_pos] [is_neg]
+    
+    is_pos:
+        ld 0 [n]
+        rtn
+        
+    is_neg:
+        ldc 0
+        ld 0 [n]
+        sub
+        rtn
+   
+    
+!func get_map world pt
+    ld 0 [world]
+    !get world.map
+    ld 0 [pt]
+    !get pt.y
+    !call list_nth
+    ld 0 [pt]
+    !get pt.x
+    !tcall list_nth
+    
+    
+!func add_pt pt dx dy
+    ld 0 [pt]
+    !get pt.x
+    ld 0 [dx]
+    add
+    
+    ld 0 [pt]
+    !get pt.y
+    ld 0 [dy]
+    add
+    
+    cons
+    rtn
+
+
+!func opposite_dir dir
+    ld 0 [dir]
+    ldc 2
+    add
+    ldc 4
+    !tcall mod
+
+
+!func dir_to_dx_dy dir
+    ld 0 [dir]
+    ldc [DOWN]
+    cgte
+    tsel [down_left] [up_right]
+    
+    down_left:
+        ld 0 [dir]
+        ldc [DOWN]
+        ceq
+        tsel [down] [left]
+    up_right:
+        ld 0 [dir]
+        tsel [right] [up]
+    up:
+        ldc 0
+        ldc -1
+        rtn
+    right:
+        ldc 1
+        ldc 0
+        rtn
+    down:
+        ldc 0
+        ldc 1
+        rtn
+    left:
+        ldc -1
+        ldc 0
+        rtn
+
+       
+; fn takes arguments: ch, x, y, a, context and returns a+1
+!func fold_map map fn a0 context
+    ldc 0
+    ldc 0
+    ld 0 [a0]
+!locals x y a
+    ld 1 [map]
+    
+    loop_y:
+        !call dup
+        atom
+        tsel [loop_y_done] [loop_y_continue]
+        loop_y_continue:
+    
+        !call dup
+        car
+
+        ldc 0
+        st 0 [x]
+        
+        loop_x:
+            !call dup
+            atom
+            tsel [loop_x_done] [loop_x_continue]
+            loop_x_continue:
+            
+            !call dup
+            car
+            ld 0 [x]
+            ld 0 [y]
+            ld 0 [a]
+            ld 1 [context]
+            ld 1 [fn]
+            ap 5
+            st 0 [a]
+
+            ld 0 [x]
+            ldc 1
+            add
+            st 0 [x]
+            
+            cdr
+            ldc 0
+            tsel [loop_x] [loop_x]
+            
+        loop_x_done:
+            !call pop
+        
+            ld 0 [y]
+            ldc 1
+            add
+            st 0 [y]
+            
+            cdr
+            ldc 0
+            tsel [loop_y] [loop_y]
+    
+    loop_y_done:
+        !call pop
+        
+        ld 0 [a]
+        rtn

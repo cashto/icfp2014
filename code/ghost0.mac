@@ -1,0 +1,225 @@
+    ; 0: is initialized
+    ; 1-2: pacman's last location
+    ; 3: tick count
+    ; 4-5: map width/height (this is not known exactly, we use the pacman's highest attained value as proxy)
+    ; 6-9: dir-to-dy table
+    ; 7-10: dir-to-dx table (yes, it overlaps)
+    
+    JEQ $is_initialized, [0], 1
+    MOV [0], 1
+    INT 1
+    MOV [1], A
+    MOV [2], B
+    MOV [6], 255
+    MOV [8], 1
+    MOV [10], 255
+    
+is_initialized:
+    ; G = my identity (0 = red, 1 = pink, 2 = cyan, 3 = orange)
+    ; H = my vitality (0 = standard/invisible, 1 = fright mode)
+    INT 3
+    MOV G, A
+    AND G, 3
+    INT 6
+    MOV H, A
+    AND H, 1
+    
+    ; Get (EF) = pacman location
+    INT 1
+    MOV E, A
+    MOV F, B
+    
+    ; Update width/height
+    JLT $width_ok, E, [4]
+    MOV [4], E
+width_ok:
+    JLT $height_ok, F, [5]
+    MOV [5], F
+height_ok:
+
+    ; Scatter mode?
+    MOV A, [3]
+    AND A, 127
+    JLT $scatter, A, 32
+    
+    ; Not scatter mode
+    ; Get (CD) = target offset (default is 0, 0)
+    MOV C, 0
+    MOV D, 0
+    JEQ $found_offset, H, 1 ; no offsets in fright mode
+    JEQ $pink, G, 1
+    JEQ $cyan, G, 2
+    MOV PC, $found_offset
+    
+pink:
+    ; Pink's offset is 4 * (pacman - pacman_last)
+    MOV C, E
+    SUB C, [1]
+    MUL C, 4
+    
+    MOV D, F
+    SUB D, [2]
+    MUL D, 4
+    MOV PC, $found_offset
+
+cyan:
+    ; Cyan's offset is ... same as the real game
+    ; (simplifies to 5 * pacman - 4 * pacman_last - red).  yay math.  yay modular arithmetic.
+    MOV C, E
+    MUL C, 5
+    MOV A, [1]
+    MUL A, 4
+    SUB C, A
+    
+    MOV D, F
+    MUL D, 5
+    MOV A, [2]
+    MUL A, 4
+    SUB D, A
+    
+    INT 3
+    AND A, 252
+    INT 5
+    SUB C, A
+    SUB D, B
+    
+found_offset:
+    ; Now, (CD) == offset, (EF) == pacman
+    ; Get (CD) = target = pacman + offset
+    ADD C, E
+    ADD D, F
+    MOV PC, $found_target
+    
+scatter:
+    ; Get (CD) = target
+    MOV C, 0
+    MOV D, 0
+    
+    MOV A, G
+    AND A, 1
+    JEQ $scatter_left, A, 0
+    MOV C, [4]
+scatter_left:
+    JLT $found_target, G, 2,
+    MOV D, [5]
+
+found_target: 
+    ;; DEBUG
+    ;JGT $temp1, G, 0
+    ;INT 8
+    ;temp1:
+    
+    ; Now, (CD) == target.
+    ; Get (AB) = my location
+    INT 3
+    INT 5
+
+    ; Get (EF) = preferred x and y directions
+    MOV E, 3
+    JGT $go_left, A, C
+    MOV E, 1
+go_left:
+    MOV F, 0
+    JGT $go_up, B, D
+    MOV F, 2
+go_up:
+
+    ; Now, (EF) == preferred x and y directions
+    ; Check fright mode, reverse them 180 degrees if necessary
+    JEQ $not_frightened, H, 0
+    ADD E, 2
+    ADD F, 2
+    MOV PC, $found_preferred_directions
+    
+not_frightened:    
+    ; orange doesn't move towards pacman, but perpendicular to him
+    JLT $found_preferred_directions, G, 3
+    ADD A, 1  ; BUG: we prioritize the dx/dy incorrectly for orange, but IDGAF
+    
+found_preferred_directions:    
+    AND E, 3
+    AND F, 3
+
+    ;; DEBUG
+    ;JGT $temp2, G, 0
+    ;INT 8
+    ;temp2:
+    
+    ; Figure out if we need to go up/down more than we need to go left/right
+    ; Get A = |dx|, B = |dy|
+    SUB A, C
+    JLT $dx_is_positive, A, 128
+    ADD A, C
+    SUB C, A
+    MOV A, C
+dx_is_positive:
+    SUB B, D
+    JLT $found_abs_dx_dy, B, 128
+    ADD B, D
+    SUB D, B
+    MOV B, D
+
+found_abs_dx_dy:
+    JGT $found_dirs, A, B
+    MOV A, E
+    MOV E, F
+    MOV F, A
+
+found_dirs:
+    ;; DEBUG
+    ;JGT $temp3, G, 0
+    ;INT 8
+    ;temp3:
+    
+    ; Now, E == preferred direction, F == alternate direction
+    ; Check to see if E is a 180 turn
+    INT 3
+    INT 6
+    ADD B, 2
+    AND B, 3
+    JEQ $use_alternate_direction, B, E
+    
+    ; Get (AB) = one step in E direction
+    INT 3
+    INT 5
+    
+    MOV C, 7
+    ADD C, E
+    MOV C, [C]
+    ADD A, C
+    
+    MOV D, 6
+    ADD D, E
+    MOV D, [D]
+    ADD B, D
+    
+    ; Check if (AB) is a wall
+    INT 7
+    
+    ;; DEBUG
+    ;JGT $temp5, G, 0
+    ;INT 8
+    ;temp5:
+    
+    JEQ $use_alternate_direction, A, 0
+    MOV PC, $found_dir
+    
+use_alternate_direction:
+    MOV E, F
+    
+found_dir:
+    ;; DEBUG
+    ;JGT $temp4, G, 0
+    ;INT 8
+    ;temp4:
+    
+    MOV A, E
+    INT 0
+    
+    ; update pacman's last location and tick count
+    INT 1
+    MOV [1], A
+    MOV [2], B
+    ADD [3], 1
+    
+    HLT

@@ -1,0 +1,119 @@
+JEQ 8, [0], 1
+MOV [0], 1
+INT 1
+MOV [1], A
+MOV [2], B
+MOV [6], 255
+MOV [8], 1
+MOV [10], 255
+INT 3
+MOV G, A
+AND G, 3
+INT 6
+MOV H, A
+AND H, 1
+INT 1
+MOV E, A
+MOV F, B
+JLT 19, E, [4]
+MOV [4], E
+JLT 21, F, [5]
+MOV [5], F
+MOV A, [3]
+AND A, 127
+JLT 55, A, 32
+MOV C, 0
+MOV D, 0
+JEQ 52, H, 1
+JEQ 30, G, 1
+JEQ 37, G, 2
+MOV PC, 52
+MOV C, E
+SUB C, [1]
+MUL C, 4
+MOV D, F
+SUB D, [2]
+MUL D, 4
+MOV PC, 52
+MOV C, E
+MUL C, 5
+MOV A, [1]
+MUL A, 4
+SUB C, A
+MOV D, F
+MUL D, 5
+MOV A, [2]
+MUL A, 4
+SUB D, A
+INT 3
+AND A, 252
+INT 5
+SUB C, A
+SUB D, B
+ADD C, E
+ADD D, F
+MOV PC, 63
+MOV C, 0
+MOV D, 0
+MOV A, G
+AND A, 1
+JEQ 61, A, 0
+MOV C, [4]
+JLT 63, G, 2
+MOV D, [5]
+INT 3
+INT 5
+MOV E, 3
+JGT 68, A, C
+MOV E, 1
+MOV F, 0
+JGT 71, B, D
+MOV F, 2
+JEQ 75, H, 0
+ADD E, 2
+ADD F, 2
+MOV PC, 77
+JLT 77, G, 3
+ADD A, 1
+AND E, 3
+AND F, 3
+SUB A, C
+JLT 84, A, 128
+ADD A, C
+SUB C, A
+MOV A, C
+SUB B, D
+JLT 89, B, 128
+ADD B, D
+SUB D, B
+MOV B, D
+JGT 93, A, B
+MOV A, E
+MOV E, F
+MOV F, A
+INT 3
+INT 6
+ADD B, 2
+AND B, 3
+JEQ 111, B, E
+INT 3
+INT 5
+MOV C, 7
+ADD C, E
+MOV C, [C]
+ADD A, C
+MOV D, 6
+ADD D, E
+MOV D, [D]
+ADD B, D
+INT 7
+JEQ 111, A, 0
+MOV PC, 112
+MOV E, F
+MOV A, E
+INT 0
+INT 1
+MOV [1], A
+MOV [2], B
+ADD [3], 1
+HLT 

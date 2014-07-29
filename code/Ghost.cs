@@ -11,9 +11,12 @@ namespace Sim
     {
         public Ghost(string filename, byte ghostIndex)
         {
-            this.code = Program.TokenizeStream(new StreamReader(filename), ',')
-                .Select(i => new GhostInstruction(i))
-                .ToList();
+            using (var file = new StreamReader(filename))
+            {
+                this.code = Program.TokenizeStream(file, ',')
+                    .Select(i => new GhostInstruction(i))
+                    .ToList();
+            }
 
             this.GhostIndex = ghostIndex;
             this.Vitality = GhostVitality.Standard;
@@ -25,38 +28,38 @@ namespace Sim
 
         protected override int TickImpl()
         {
-            var oldDirection = this.Direction;
-            var oppositeDirection = Program.OppositeDirection(oldDirection);
-
             // TODO: catch exceptions.
+            var oldDirection = this.Direction;
             this.requestedDirection = this.Direction;
             ExecuteAi();
-            this.Direction = this.requestedDirection;
-
-            var wallCount = WallCount(Direction.Up) + WallCount(Direction.Down) + WallCount(Direction.Right) + WallCount(Direction.Left);
-            if (wallCount == 3)
-            {
-                // Dead end, must turn around.
-                this.Direction = oppositeDirection;
-            }
-            else if (this.Direction == oppositeDirection || WallCount(this.Direction) != 0)
-            {
-                // Selected an illegal direction, so go back to what we were using before.
-                this.Direction = oldDirection;
-
-                // Fallback if we still cannot go this direction.
-                var i = 0;
-                while (this.Direction == oppositeDirection || WallCount(this.Direction) != 0)
-                {
-                    this.Direction = standardDirections[i++];
-                }
-            }
-
+            
+            this.Direction = ComputeDirection(this.requestedDirection, oldDirection);
             this.CurrentPosition = this.CurrentPosition.Move(this.Direction);
             Program.LogMove(this.ScheduledTick, string.Format("={0}", this.GhostIndex), this.CurrentPosition);
 
             return this.Vitality == GhostVitality.Fright ? frightTicks[this.GhostIndex % 4] : standardTicks[this.GhostIndex % 4];
         }
+
+
+        private Direction ComputeDirection(
+            Direction requestedDirection,
+            Direction oldDirection)
+        {
+            var directions = new List<Direction>() { requestedDirection, oldDirection, Direction.Up, Direction.Right, Direction.Down, Direction.Left };
+            var oppositeDirection = Program.OppositeDirection(oldDirection);
+
+            foreach (var direction in directions)
+            {
+                if (direction != oppositeDirection &&
+                    this.Map[this.CurrentPosition.Move(direction)] != MapCell.Wall)
+                {
+                    return direction;
+                }
+            }
+
+            return oppositeDirection;
+        }
+
 
         private void ExecuteAi()
         {
@@ -164,7 +167,10 @@ namespace Sim
                                 this.registers[0] = (byte)this.Map[x, y];
                                 break;
                             case 8:
-                                // NotImplementedException
+                                Program.LogDebug(this.ScheduledTick, "INT8: pc:{0} regs:({1}) mem:({2})",
+                                    pc,
+                                    string.Join(", ", this.registers.Select(ii => ii.ToString())),
+                                    string.Join(", ", this.data.Take(8).Select(ii => ii.ToString())));
                                 break;
                         }
                         break;
@@ -221,14 +227,8 @@ namespace Sim
             }
         }
 
-        private int WallCount(Direction direction)
-        {
-            return this.Map[this.CurrentPosition.Move(direction)] == MapCell.Wall ? 1 : 0;
-        }
-
         private static readonly int[] frightTicks = new int[] { 195, 198, 201, 204 };
         private static readonly int[] standardTicks = new int[] { 130, 132, 134, 136 };
-        private static readonly Direction[] standardDirections = new Direction[] { Direction.Up, Direction.Right, Direction.Down, Direction.Left };
 
         private byte pc;
         private byte[] data = new byte[256];

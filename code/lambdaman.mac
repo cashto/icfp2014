@@ -1,0 +1,760 @@
+!equ SEARCH_DEPTH_CUTOFF         5
+!equ SEARCH_DEPTH_CUTOFF_BIG_MAP 3
+!equ SEARCH_SCORE_CUTOFF      1000
+!equ IGNORE_GHOST_CUTOFF        10
+;!equ WASTED_POWERPILL_CUTOFF    8
+
+
+!equ EAT_PILL_BONUS             20
+!equ EAT_GHOST_BONUS          5000
+!equ EAT_FRUIT_BONUS           500
+;!equ WASTED_POWERPILL_PENALTY   0
+!equ EAT_POWERPILL_PENALTY    -200
+!equ DISTANCE_PENALTY          -10
+!equ BACKTRACK_PENALTY         -50
+!equ DEATH_PENALTY          -10000
+
+
+!func main world dummy ;; returns (state, step)
+    ld 0 [world]
+    !get world.map
+    ldf [find_fruit]
+    ldc 0
+    ldc 0
+    !call fold_map
+    
+    ld 0 [world]
+    !get world.ghosts
+    ldc 0
+    ldf [count]
+    ldc 0
+    !call list_fold
+    ldc 8
+    cgt
+    ldc [SEARCH_DEPTH_CUTOFF_BIG_MAP]
+    ldc [SEARCH_DEPTH_CUTOFF]
+    !call ternary
+    
+    cons
+    
+    ldf [step]
+    cons
+    rtn
+
+
+; state = (fruit_pt, search_depth)
+!func step state world ;; returns (state, dir)
+    ld 0 [state]
+    
+    ; set up parameters to search_iter
+        ; world
+        ld 0 [world]
+        
+        ; pacman_vit
+        ld 0 [world]
+        !get world.pacman
+        !get pacman.vit
+        
+        ; pacman_pt
+        ld 0 [world]
+        !get world.pacman
+        !get pacman.pt
+        
+        ; ghosts
+        ld 0 [world]
+        !get world.ghosts
+        
+        ; depth
+        ldc 0
+        
+        ; score
+        ldc 0
+        
+        ; visited
+        ld 0 [world]
+        !call get_previous_pt
+        ldc 0
+        cons
+        
+        ; target_pt
+        ld 0 [state]
+        car
+        ld 0 [world]
+        !call get_target_pt
+        
+        ; search_cutoff
+        ld 0 [state]
+        cdr
+        
+    !call search_iter
+    
+    ;; DEBUG
+    ;!call print
+    
+    car
+    cons
+    rtn
+
+
+!func search_iter world pacman_vit pacman_pt ghosts depth score visited target_pt search_cutoff ;; returns (dir, score)
+    ldc 0
+    ldc 0
+!locals best_dir best_score
+    ld 1 [search_cutoff]
+    ld 1 [depth]
+    ceq
+
+    ld 1 [score]
+    !call abs
+    ldc [SEARCH_SCORE_CUTOFF]
+    cgt 
+
+    add
+    sel [cutoff_reached] [cutoff_not_reached]
+
+    ld 0 [best_dir]
+    ld 0 [best_score]
+    cons
+    rtn
+    
+    cutoff_reached:
+        ld 1 [score]
+        
+        ; add a penalty for being away from the target_pt
+        ld 1 [pacman_pt]
+        !get pt.x
+        ld 1 [target_pt]
+        !get pt.x
+        sub
+        !call abs
+        ldc [DISTANCE_PENALTY]
+        mul
+        add
+
+        ld 1 [pacman_pt]
+        !get pt.y
+        ld 1 [target_pt]
+        !get pt.y
+        sub
+        !call abs
+        ldc [DISTANCE_PENALTY]
+        mul
+        add        
+        
+        st 0 [best_score]
+        
+        ;; DEBUG
+        ;ld 0 [best_score]
+        ;ld 1 [pacman_pt]
+        ;ld 1 [visited]
+        ;ld 1 [ghosts]
+        ;ld 1 [pacman_vit]
+        ;ld 1 [target_pt]
+        ;cons
+        ;cons
+        ;cons
+        ;cons
+        ;cons
+        ;dbug      
+        
+        join
+        
+    cutoff_not_reached:
+        ldc [MININT]
+        st 0 [best_score]
+        
+        ; Try up
+        ldc 0
+        !call search_iter_impl
+        
+        ; Try right
+        ldc 1
+        !call search_iter_impl
+
+        ; Try down
+        ldc 2
+        !call search_iter_impl
+
+        ; Try left
+        ldc 3
+        !call search_iter_impl
+        join
+
+
+!func search_iter_impl dir  ;; CALLED BY SEARCH_ITER
+    ldc 0
+    ldc 0
+    ldc 0
+    ldc 0
+!locals new_pt map_at_new_point search_iter_result evolved_ghosts
+    ; new_pt = pacman_pt.move(dir)
+    ld 3 [search_iter$pacman_pt]
+    ld 1 [dir]
+    !call dir_to_dx_dy
+    !call add_pt
+    st 0 [new_pt]
+    
+    ; map_at_new_point = get_map(world, new_pt)
+    ld 3 [search_iter$world]
+    ld 0 [new_pt]
+    !call get_map
+    st 0 [map_at_new_point]
+    
+    ; continue if map_at_new_point is WALL
+    ld 0 [map_at_new_point]
+    ldc [WALL]
+    ceq
+    tsel [exit] [is_not_wall]
+    is_not_wall:
+    
+    ; evolve state
+        ; world stays the same
+        ld 3 [search_iter$world]
+    
+        ; pacman_vit = isPowerPill(newPt) ? POWERPILL_TICKS : max(pacman_vit - 140, 0)
+        ;    (140 just to be on safe side -- slowest pacman moves is 137 ticks/move)
+        ld 0 [map_at_new_point]
+        ldc [POWERPILL]
+        ceq
+        ldc [POWERPILL_TICKS]
+        ld  3 [search_iter$pacman_vit]
+        ldc 140
+        sub
+        ldc 0
+        !call max
+        !call ternary
+        
+        ; pacman_pt = new_pt
+        ld 0 [new_pt]
+    
+        ; ghosts.map(i -> newDir = pickDir(i.dir), (i.pt.move(newDir), newDir))
+        ld 3 [search_iter$ghosts]
+        ldf [evolve_ghost]
+
+        ld 3 [search_iter$world]
+        ld 0 [new_pt]
+        ld  3 [search_iter$pacman_vit]
+        cons
+        cons
+
+        !call list_map
+        st 0 [evolved_ghosts]
+        ld 0 [evolved_ghosts]
+        
+        ; depth = depth + 1
+        ld 3 [search_iter$depth]
+        ldc 1
+        add
+        
+        ; score = score + compute_score()
+        ld 3 [search_iter$score]
+        !call compute_score
+        add
+        
+        ; visited = [pacman_pt | visited]
+        ld 3 [search_iter$pacman_pt]
+        ld 3 [search_iter$visited]
+        cons
+        
+        ; target_pt stays the same
+        ld 3 [search_iter$target_pt]
+
+        ; search_cutoff stays the same
+        ld 3 [search_iter$search_cutoff]
+        
+    !call search_iter
+    st 0 [search_iter_result]
+    
+    ; continue if new_score <= current score
+    ld 0 [search_iter_result]
+    cdr
+    ld 2 [search_iter$best_score]
+    cgt
+    tsel [is_better_score] [exit]
+    
+    is_better_score:
+        ld 0 [search_iter_result]
+        cdr
+        st 2 [search_iter$best_score]
+        
+        ld 1 [dir]
+        st 2 [search_iter$best_dir]
+        
+    exit:
+        rtn
+
+
+!func pick_direction world ghost pacman_pt
+    ; Calculate dx
+    ld 0 [ghost]
+    !get ghost.x
+    ld 0 [pacman_pt]
+    !get pt.x
+    sub
+    
+    ; Calculate dy
+    ld 0 [ghost]
+    !get ghost.y
+    ld 0 [pacman_pt]
+    !get pt.y
+    sub
+    
+    ldc 0
+    ldc 0
+    ldc 0
+    ldc 0
+!locals dx dy left_right up_down dir prefer_left_right
+    ; Calculate best left-right direction
+    ld 0 [dx]
+    ldc 0
+    cgt
+    ldc [LEFT]
+    ldc [RIGHT]
+    !call ternary
+    st 0 [left_right]
+
+    ; Calculate best up-down direction
+    ld 0 [dy]
+    ldc 0
+    cgt
+    ldc [UP]
+    ldc [DOWN]
+    !call ternary
+    st 0 [up_down]
+    
+    ; Calculate whether we prefer left-right or up-down chasing.
+    ld 0 [dx]
+    !call abs
+    ld 0 [dy]
+    !call abs
+    cgt
+    st 0 [prefer_left_right]
+
+    ; Assume that ghost will come towards me if they can.
+    ld 0 [prefer_left_right]
+    ld 0 [left_right]
+    ld 0 [up_down]
+    !call ternary
+    st 0 [dir]
+
+    ; If the ghost is far enough away, we can just assume it can walk 
+    ; through walls (optimizing away costly map check)
+    ld 0 [dx]
+    !call abs
+    ld 0 [dy]
+    !call abs
+    !call max
+    ldc [IGNORE_GHOST_CUTOFF]
+    cgte
+    tsel [return] [must_check_ghost]
+    
+    must_check_ghost:
+        ld 0 [dir]
+        !call can_ghost_move
+        tsel [return] [cant_go_preferred_direction]
+
+    cant_go_preferred_direction:
+        ld 0 [prefer_left_right]
+        ld 0 [up_down]
+        ld 0 [left_right]
+        !call ternary
+        !call can_ghost_move
+        tsel [return] [cant_go_alternate_direction]
+    
+    ; Otherwise, continue in their same direction if they can (no wall and of course no reverse).
+    cant_go_alternate_direction:
+        ld 1 [ghost]
+        !get ghost.dir
+        !call can_ghost_move
+        tsel [return] [cant_keep_going]
+        
+    ; Otherwise, up, right, down, left.
+    cant_keep_going:
+        ldc 0
+        !call can_ghost_move
+        tsel [return] [cant_go_up]    
+    
+    cant_go_up:
+        ldc 1
+        !call can_ghost_move
+        tsel [return] [cant_go_right]   
+
+    cant_go_right:        
+        ldc 2
+        !call can_ghost_move
+        tsel [return] [cant_go_down]
+
+    cant_go_down:
+        ldc 3
+        !call can_ghost_move
+        tsel [return] [cant_go_left]
+        
+    ; Otherwise, reverse direction.
+    cant_go_left:
+        ld 1 [ghost]
+        !get ghost.dir
+        !call opposite_dir
+        st 0 [dir]
+        
+    return:
+        ld 0 [dir]
+        rtn
+        
+
+; context = (world, new_pt, pacman_vit)        
+!func evolve_ghost ghost context
+    ld 0 [context]
+    car
+
+    ld 0 [ghost]
+
+    ld 0 [context]
+    cdr
+    car
+    
+    !call pick_direction
+!locals new_dir
+    ld 1 [ghost]
+    !get ghost.vit
+    
+        ld 1 [context]
+        cdr
+        cdr
+        ldc 0
+        cgt
+        ld 1 [ghost]
+        !get ghost.vit
+        ldc [VIT_INVISIBLE]
+        ceq
+        add
+        ldc 2
+        ceq
+        
+        ld 1 [ghost]
+        !get ghost.pt
+        
+        ld 1 [ghost]
+        !get ghost.pt
+        ld 0 [new_dir]
+        !call dir_to_dx_dy
+        !call add_pt
+    
+    !call ternary
+    
+    ld 0 [new_dir]
+    
+    cons
+    cons
+    rtn
+
+    
+!func compute_score ;; CALLED BY SEARCH_ITER_IMPL
+    ld 4 [search_iter$visited]
+    ldf [compare_pt]
+    ld 1 [search_iter_impl$new_pt]
+    !call list_any
+!locals visited
+    ; ghosts.fold(0, compute_ghost_score, (new_pt, pacman_vit))
+        ld 5 [search_iter$ghosts]
+        ldc 0
+        ldf [compute_ghost_score]
+        ld 2 [search_iter_impl$new_pt]
+        ld 5 [search_iter$pacman_vit]
+        cons
+        !call list_fold
+        
+    ; + (same as above, but for new ghost positions this time)
+        ld 2 [search_iter_impl$evolved_ghosts]
+        ldc 0
+        ldf [compute_ghost_score]
+        ld 2 [search_iter_impl$new_pt]
+        ld 5 [search_iter$pacman_vit]
+        cons
+        !call list_fold
+        add
+        
+    ; + ate_powerpill * wasted_powerup_penalty
+        ; turns out this doesn't work, commenting out
+        ; it's better just to have a penalty for eating powerups
+        ;ld 2 [search_iter_impl$map_at_new_point]
+        ;ldc [POWERPILL]
+        ;ceq
+
+        ;ld 2 [search_iter_impl$evolved_ghosts]
+        ;ld 2 [search_iter_impl$new_pt]
+        ;!call compute_avg_distance
+        ;ldc [WASTED_POWERPILL_CUTOFF]
+        ;cgt
+        ;ldc [WASTED_POWERPILL_PENALTY]
+        ;ldc 0
+        ;!call ternary
+        
+        ;mul
+        ;add
+        
+    ; + ate_pill * (visited ? 0 : EAT_PILL_BONUS)
+        ld 2 [search_iter_impl$map_at_new_point]
+        ldc [PILL]
+        ceq
+        
+        ld 0 [visited]
+        ldc 0
+        ldc [EAT_PILL_BONUS]
+        !call ternary
+        
+        mul
+        add
+        
+    ; + ate_powerpill * (visited ? 0 : EAT_POWERPILL_PENALTY)
+        ld 2 [search_iter_impl$map_at_new_point]
+        ldc [POWERPILL]
+        ceq
+    
+        ld 0 [visited]
+        ldc 0
+        ldc [EAT_POWERPILL_PENALTY]
+        !call ternary
+
+        mul
+        add
+        
+    ; + ate_fruit * EAT_FRUIT_BONUS
+        ld 2 [search_iter_impl$map_at_new_point]
+        ldc [FRUIT]
+        ceq
+        ld 5 [search_iter$world]
+        !get world.fruit
+        ldc 0
+        cgt
+        ldc [EAT_FRUIT_BONUS]
+        mul
+        mul
+        add
+
+    ; apply a discount to above bonuses (100% - depth * 10%)
+        ldc 10
+        ld 5 [search_iter$depth]
+        sub
+        mul
+        ldc 10
+        div
+        
+    ; + visited * BACKTRACK_PENALTY
+        ld 0 [visited]
+        ldc [BACKTRACK_PENALTY]
+        mul
+        add
+    
+    rtn
+
+
+; context = (pt, vit)            
+!func compute_ghost_score a ghost context
+    ld 0 [a]
+    ldc 0
+    cgte
+    tsel [check_pt] [return_a]
+    
+    check_pt:
+        ld 0 [context]
+        car
+        ld 0 [ghost]
+        !get ghost.pt
+        !call compare_pt
+        tsel [calc_score] [return_a]
+        
+    return_a:
+        ld 0 [a]
+        rtn
+        
+    calc_score:
+        ld 0 [ghost]
+        !get ghost.vit
+        ldc [VIT_INVISIBLE]
+        ceq
+        
+        ld 0 [context]
+        cdr
+        ldc 0
+        ceq
+        
+        add
+        ldc [DEATH_PENALTY]
+        ldc [EAT_GHOST_BONUS]
+        !tcall ternary
+
+
+        
+!func can_ghost_move dir  ;; CALLED BY PICK_DIRECTION
+    ld 0 [dir]
+    st 1 [pick_direction$dir]
+
+    ld 2 [pick_direction$ghost]
+    !get ghost.dir
+    ld 0 [dir]
+    !call opposite_dir
+    ceq
+    tsel [return_false] [check_for_wall]
+    
+    check_for_wall:
+        ; map_at_new_pt = get_map(world, add_pt(ghost.pt, dir_to_dx_dy(dir)))
+        ld 2 [pick_direction$world]
+        ld 2 [pick_direction$ghost]
+        !get ghost.pt
+        ld 0 [dir]
+        !call dir_to_dx_dy
+        !call add_pt
+        !call get_map
+        
+        ldc [WALL]
+        ceq
+        tsel [return_false] [return_true]
+        
+    return_false:
+        ldc 0
+        rtn
+        
+    return_true:
+        ldc 1
+        rtn
+
+        
+!func closest_pill ch x y a pacman_pt
+    ld 0 [ch]
+    ldc [PILL]
+    ceq
+    tsel [is_pill] [isnt_pill]
+    
+    isnt_pill:
+        ld 0 [a]
+        rtn
+        
+    is_pill:
+        ld 0 [pacman_pt]
+        !get pt.x
+        ld 0 [x]
+        sub
+        !call abs
+        
+        ld 0 [pacman_pt]
+        !get pt.y
+        ld 0 [y]
+        sub
+        !call abs
+        
+        add
+        
+        !call dup
+        ld 0 [a]
+        car
+        cgt
+        tsel [is_farther_away] [is_closer] 
+    
+    is_farther_away:
+        !call pop
+        ld 0 [a]
+        rtn
+        
+    is_closer:
+        ld 0 [x]
+        ld 0 [y]
+        cons
+        cons
+        rtn
+
+        
+!func get_target_pt fruit_pt world
+    ld 0 [world]
+    !get world.fruit
+    tsel [has_fruit] [no_fruit]
+    
+    has_fruit:
+        ld 0 [fruit_pt]
+        rtn
+        
+    no_fruit:
+        ld 0 [world]
+        !get world.map
+        ldf [closest_pill]
+            ; a0 = (MAXINT, 0)
+            ldc [MAXINT] 
+            ldc 0
+            cons
+        ld 0 [world]
+        !get world.pacman
+        !get pacman.pt
+        !call fold_map
+        cdr
+        rtn
+
+        
+!func find_fruit ch x y a context
+    ld 0 [ch]
+    ldc [FRUIT]
+    ceq
+    ld 0 [x]
+    ld 0 [y]
+    cons
+    ld 0 [a]
+    !tcall ternary
+    
+    
+!func get_previous_pt world
+    ld 0 [world]
+    !get world.pacman
+    !get pacman.pt
+    ld 0 [world]
+    !get world.pacman
+    !get pacman.dir
+    !call opposite_dir
+    !call dir_to_dx_dy
+    !call add_pt
+    rtn
+
+    
+!func compute_avg_distance ghosts pacman_pt
+    ldc 0
+!locals n
+    ld 1 [ghosts]
+    ldc 0
+    ldc 0
+    cons
+    ldf [compute_ghost_distance]
+    ld 1 [pacman_pt]
+    !call list_fold
+    
+    !call dup
+    car
+    st 0 [n]
+    
+    cdr
+    ld 0 [n]
+    div  ; better be some ghosts on this map ...
+    
+    rtn
+
+    
+!func compute_ghost_distance a ghost pacman_pt
+    ld 0 [a]
+    car
+    ldc 1
+    add
+    
+    ld 0 [a]
+    cdr
+    ld 0 [ghost]
+    !get ghost.pt
+    ld 0 [pacman_pt]
+    !call pt_distance
+    add
+    
+    cons
+    rtn
+    
+
+!func count a i context
+    ld 0 [a]
+    ldc 1
+    add
+    rtn
+    

@@ -1,0 +1,40 @@
+!equ MININT -2147483648
+!equ MAXINT 2147483647
+
+!equ UP 0
+!equ RIGHT 1
+!equ DOWN 2
+!equ LEFT 3
+
+!equ VIT_STANDARD 0
+!equ VIT_FRIGHT 1
+!equ VIT_INVISIBLE 2
+
+!equ WALL 0
+!equ EMPTY 1
+!equ PILL 2
+!equ POWERPILL 3
+!equ FRUIT 4
+!equ POWERPILL_TICKS 2540
+
+!equ world.map car
+!equ world.pacman cdar
+!equ world.ghosts cddar
+!equ world.fruit cdddr
+
+!equ pacman.vit car
+!equ pacman.pt cdar
+!equ pacman.x cdaar
+!equ pacman.y cdadr
+!equ pacman.dir cddar
+!equ pacman.lives cdddar
+!equ pacman.score cddddr
+
+!equ ghost.vit car
+!equ ghost.pt cdar
+!equ ghost.x cdaar
+!equ ghost.y cdadr
+!equ ghost.dir cddr
+
+!equ pt.x car
+!equ pt.y cdr

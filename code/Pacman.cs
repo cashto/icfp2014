@@ -11,9 +11,12 @@ namespace Sim
     {
         public Pacman(string filename)
         {
-            this.code = Program.TokenizeStream(new StreamReader(filename), ' ')
-                .Select(i => new PacmanInstruction(i))
-                .ToList();
+            using (var file = new StreamReader(filename))
+            {
+                this.code = Program.TokenizeStream(file, ' ')
+                    .Select(i => new PacmanInstruction(i))
+                    .ToList();
+            }
 
             this.Lives = 3;
             this.ScheduledTick = 127;
@@ -21,30 +24,20 @@ namespace Sim
 
         public void CallMain()
         {
-            var ans = ExecuteAi(this.code, 0, new PacmanEnvironmentFrame(EncodeCurrentState(), null));
+            var ans = ExecuteAi(this.code, 0, new PacmanEnvironmentFrame(EncodeCurrentState(), null), 0);
             this.currentState = ans.Item1;
             this.stepFunction = ans.Item2;
         }
 
         protected override int TickImpl()
         {
-            if (!this.Fault)
+            var ans = ExecuteAi(this.code, this.stepFunction.IntValue, new PacmanEnvironmentFrame(this.currentState, EncodeCurrentState()), this.ScheduledTick);
+            if (!Enum.IsDefined(typeof(Direction), ans.Item2.IntValue))
             {
-                try
-                {
-                    var ans = ExecuteAi(this.code, this.stepFunction.IntValue, new PacmanEnvironmentFrame(this.currentState, EncodeCurrentState()));
-                    if (!Enum.IsDefined(typeof(Direction), ans.Item2.IntValue))
-                    {
-                        throw new Exception(); // TODO
-                    }
-                    this.currentState = ans.Item1;
-                    this.Direction = (Direction)ans.Item2.IntValue;
-                }
-                catch (Exception)
-                {
-                    this.Fault = true;
-                }
+                throw new Exception(); // TODO
             }
+            this.currentState = ans.Item1;
+            this.Direction = (Direction)ans.Item2.IntValue;
 
             var newPosition = this.CurrentPosition.Move(this.Direction);
             if (this.Map[newPosition] != MapCell.Wall)
@@ -57,21 +50,39 @@ namespace Sim
         }
 
         public int Lives { get; set; }
-        public bool Fault { get; set; }
         private static PacmanValue ExecuteAi(
             List<PacmanInstruction> code,
             int pc,
-            PacmanEnvironmentFrame initialEnvironmentFrame)
+            PacmanEnvironmentFrame initialEnvironmentFrame,
+            int tick)
         {
+            const bool PROFILE = false;
+
+            var iter = 0;
             var dataStack = new List<PacmanValue>();
             var controlStack = new List<PacmanValue>() { new PacmanValue(PacmanTag.Stop) };
             var currentEnvironmentFrame = initialEnvironmentFrame;
+            var profileData = new Dictionary<string, int>();
+            var funcCallData = new Dictionary<int, int>();
 
             while (true)
             {
+                if (PROFILE)
+                {
+                    var profileKey = string.Join(", ", controlStack
+                        .Where(i => i.Tag == PacmanTag.Ret)
+                        .Select(i => i.ProfileAddress.ToString())
+                        .LastOrDefault());
+                    int profileValue;
+                    profileData.TryGetValue(profileKey, out profileValue);
+                    profileData[profileKey] = profileValue + 1;
+                }
+
+                ++iter;
                 PacmanValue xx, yy;
                 PacmanEnvironmentFrame frame, newFrame;
                 PacmanInstruction inst = code[pc];
+                int funcCallDataValue;
 
                 switch (inst.Opcode)
                 {
@@ -97,7 +108,7 @@ namespace Sim
                         ++pc;
                         break;
                     case PacmanOpcode.Div:
-                        DoMath(dataStack, (x, y) => x / y);
+                        DoMath(dataStack, (x, y) => (int)Math.Floor((double)x / (double)y));
                         ++pc;
                         break;
                     case PacmanOpcode.Ceq:
@@ -174,7 +185,12 @@ namespace Sim
 
                         if (inst.Opcode == PacmanOpcode.Ap)
                         {
-                            controlStack.Add(PacmanValue.Ret(pc + 1, currentEnvironmentFrame));
+                            controlStack.Add(PacmanValue.Ret(pc + 1, currentEnvironmentFrame, xx.IntValue));
+                            if (PROFILE)
+                            {
+                                funcCallData.TryGetValue(xx.IntValue, out funcCallDataValue);
+                                funcCallData[xx.IntValue] = funcCallDataValue + 1;
+                            }
                         }
 
                         currentEnvironmentFrame = newFrame;
@@ -184,6 +200,11 @@ namespace Sim
                         xx = controlStack.Pop();
                         if (xx.Tag == PacmanTag.Stop)
                         {
+                            Program.LogDebug(tick, "iters = {0}", iter);
+                            if (PROFILE)
+                            {
+                                Program.LogProfileInfo(tick, profileData, funcCallData);
+                            }
                             return dataStack.Pop();
                         }
                         xx.VerifyTag(PacmanTag.Ret);
@@ -227,7 +248,13 @@ namespace Sim
 
                         if (inst.Opcode == PacmanOpcode.Rap)
                         {
-                            controlStack.Add(PacmanValue.Ret(pc + 1, currentEnvironmentFrame.Parent));
+                            controlStack.Add(PacmanValue.Ret(pc + 1, currentEnvironmentFrame.Parent, xx.IntValue));
+
+                            if (PROFILE)
+                            {
+                                funcCallData.TryGetValue(xx.IntValue, out funcCallDataValue);
+                                funcCallData[xx.IntValue] = funcCallDataValue + 1;
+                            }
                         }
 
                         newFrame.IsValid = true;
@@ -244,6 +271,7 @@ namespace Sim
                         break;
                     case PacmanOpcode.Dbug:
                         xx = dataStack.Pop();
+                        Program.LogDebug(tick, "DBUG: '{0}'", xx);
                         ++pc;
                         break;
                     case PacmanOpcode.Brk:
@@ -287,7 +315,7 @@ namespace Sim
             return PacmanValue.Tuple(
                 EncodeMap(),
                 PacmanValue.Tuple(
-                    PacmanValue.Int(0), // vitality TODO
+                    PacmanValue.Int(Math.Max(0, this.Map.FrightModeDeactivateTime - this.ScheduledTick)),
                     PacmanValue.Point(this.CurrentPosition),
                     PacmanValue.Int((int)this.Direction),
                     PacmanValue.Int(this.Lives),
@@ -297,7 +325,7 @@ namespace Sim
                         PacmanValue.Int((int)i.Vitality),
                         PacmanValue.Point(i.CurrentPosition),
                         PacmanValue.Int((int)i.Direction)))),
-                PacmanValue.Int(0)); // fruit TODO
+                PacmanValue.Int(Math.Max(0, this.Map.FruitDeactivateTime - this.ScheduledTick)));
         }
 
         private PacmanValue EncodeMap()
@@ -410,6 +438,7 @@ namespace Sim
 
         public PacmanTag Tag { get; set; }
         public int IntValue { get; set; }
+        public int ProfileAddress { get; set; }
         public PacmanValue Item1 { get; set; }
         public PacmanValue Item2 { get; set; }
         public PacmanEnvironmentFrame EnvironmentFrameValue { get; set; }
@@ -419,15 +448,15 @@ namespace Sim
             switch(this.Tag)
             {
                 case PacmanTag.Int:
-                    return string.Format("int:{0}", this.IntValue);
+                    return string.Format("{0}", this.IntValue);
                 case PacmanTag.Closure:
                     return string.Format("closure:({0},{1})", this.IntValue, this.EnvironmentFrameValue);
                 case PacmanTag.Cons:
-                    return string.Format("cons:({0},{1})", this.Item1, this.Item2);
+                    return string.Format("({0},{1})", this.Item1, this.Item2);
                 case PacmanTag.Join:
                     return string.Format("join:({0})", this.IntValue);
                 case PacmanTag.Ret:
-                    return string.Format("ret:({0},{1})", this.IntValue, this.EnvironmentFrameValue);
+                    return string.Format("ret:({0},{1},{2})", this.IntValue, this.EnvironmentFrameValue, this.ProfileAddress);
                 case PacmanTag.Stop:
                     return string.Format("stop");
                 default:
@@ -463,9 +492,9 @@ namespace Sim
             return new PacmanValue(PacmanTag.Closure) { IntValue = address, EnvironmentFrameValue = environmentFrame };
         }
 
-        public static PacmanValue Ret(int address, PacmanEnvironmentFrame environmentFrame)
+        public static PacmanValue Ret(int address, PacmanEnvironmentFrame environmentFrame, int profileAddress)
         {
-            return new PacmanValue(PacmanTag.Ret) { IntValue = address, EnvironmentFrameValue = environmentFrame };
+            return new PacmanValue(PacmanTag.Ret) { IntValue = address, EnvironmentFrameValue = environmentFrame, ProfileAddress = profileAddress };
         }
 
         public static PacmanValue Point(Point pt)
