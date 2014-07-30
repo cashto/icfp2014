@@ -2,7 +2,7 @@
 
 Team cashto is, as it has been since 2007, the work of one Chris Ashton from Seattle.
 
-* [Discuss on Reddit](http://www.reddit.com/r/icfpcontest/comments/2c0l3f/cashtos_2014_icfp_contest_writeup/)!
+* [Discuss on Reddit](http://www.reddit.com/r/icfpcontest/comments/2c3etk/cashtos_2014_icfp_contest_writeup/)!
 * [Time lapse video](http://youtu.be/-QlvQVDuO0c)!
 * [Online visualizer](https://dl.dropboxusercontent.com/u/31272201/icfp/2014/index.html) of both AIs on the standard map.
 * [Final whiteboard](https://dl.dropboxusercontent.com/u/31272201/icfp/2014/whiteboard.jpg).
